@@ -1,52 +1,72 @@
-# T5 Grammar Correction API
+Here’s the updated `README.md` to reflect the current state of your project, including use of a **pre-trained HuggingFace model**, externalized training, and FastAPI inference:
 
-A FastAPI-based web service for grammar correction using a fine-tuned [T5-small](https://huggingface.co/t5-small) model on the [JFLEG](https://huggingface.co/datasets/jfleg) dataset.
+---
 
-## Features
+# ✨ T5 Grammar Correction API
 
-- **Grammar Correction**: Accepts user text and returns a grammatically corrected version.
-- **Fine-tuning**: Automatically fine-tunes T5-small on JFLEG if no trained model is found.
-- **REST API**: Simple `/inference` endpoint for integration.
+A FastAPI-based microservice for grammar correction using a pre-trained [T5](https://huggingface.co/deep-learning-analytics/GrammarCorrector) model from HuggingFace. Designed to integrate seamlessly with writing assistant workflows.
 
-## Project Structure
+---
+
+## 🚀 Features
+
+* ✅ **Grammar Correction** using a T5 model fine-tuned on the C4 dataset.
+* ⚡️ **Inference-Only** mode—no local training required.
+* 🔌 **REST API** exposed via FastAPI (`/predict` endpoint).
+* 🔄 Easily swappable with any HuggingFace grammar correction model.
+
+---
+
+## 🧱 Project Structure
 
 ```
-app/
-├── main.py                # FastAPI app entrypoint
-├── models/
-│   └── t5_model.py        # T5 model loading and inference
-├── routes/
-│   └── inference.py       # Inference API route
-├── schemas/
-│   └── prompt.py          # Pydantic schema for user input
-├── trainer/
-│   └── trainer.py         # Fine-tuning script
+t5-grammar/
+├── app/
+│   ├── main.py                # FastAPI app entrypoint
+│   ├── models/
+│   │   └── grammar_corrector.py  # HuggingFace T5 model integration
+│   ├── routes/
+│   │   └── predict.py         # Inference route handler
+│   ├── schemas/
+│   │   └── prompt.py          # Pydantic schema for request/response
+│   └── utils/
+│       └── __init__.py        # Optional utility functions
+├── trainer/                   # Optional: Fine-tuning module
+│   └── trainer.py
+├── requirements.txt
+└── README.md
 ```
 
-## Setup
+---
 
-1. **Clone the repository**
-   ```bash
-   git clone <repo-url>
-   cd t5-grammar
-   ```
+## ⚙️ Setup
 
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 1. Clone the repository
 
-3. **Run the API**
-   ```bash
-   python app/main.py
-   ```
-   - If no fine-tuned model is found in `app/trainer/t5-trained/`, training will start automatically in the background.
+```bash
+git clone <repo-url>
+cd t5-grammar
+```
 
-## API Usage
+### 2. Install dependencies
 
-### Endpoint
+```bash
+pip install -r requirements.txt
+```
 
-`POST /inference`
+### 3. Run the FastAPI app
+
+```bash
+uvicorn app.main:app --reload
+```
+
+---
+
+## 📡 API Usage
+
+### `POST /predict`
+
+Use this endpoint to submit a text string for grammar correction.
 
 #### Request Body
 
@@ -60,23 +80,40 @@ app/
 
 ```json
 {
-  "grammar_errors": "your corrected sentence"
+  "corrected": "your corrected sentence"
 }
 ```
 
-## Training
+---
 
-- The trainer uses the JFLEG dataset and fine-tunes T5-small.
-- Training is triggered automatically if no model is found, or you can run it manually:
-  ```bash
-  python app/trainer/trainer.py
-  ```
+## 🧠 Model Details
 
-## Notes
+* **Model**: [`deep-learning-analytics/GrammarCorrector`](https://huggingface.co/deep-learning-analytics/GrammarCorrector)
+* **Architecture**: T5-base (pre-trained and fine-tuned)
+* **Training Dataset**: [C4 200M](https://huggingface.co/datasets/c4)
+* You may swap this out with any other HuggingFace grammar model in `grammar_corrector.py`.
 
-- For best performance, use a machine with a CUDA-enabled GPU. On Mac/CPU, training will be slower.
-- The trained model and tokenizer are saved in `app/trainer/t5-trained/` (ignored by git).
+---
 
-## License
+## 🛠 Optional: Custom Training
 
-MIT
+If you'd like to train your own model using datasets like [JFLEG](https://huggingface.co/datasets/jhu-clsp/jfleg):
+
+```bash
+python trainer/trainer.py
+```
+
+The model will be saved to `trainer/t5-trained/`.
+
+---
+
+## 📝 Notes
+
+* No GPU required for inference, but recommended for fine-tuning.
+* Browser-based apps can offload grammar correction to this service via a simple POST request.
+
+---
+
+## 📄 License
+
+MIT License

@@ -95,18 +95,6 @@ Use this endpoint to submit a text string for grammar correction.
 
 ---
 
-## 🛠 Optional: Custom Training
-
-If you'd like to train your own model using datasets like [JFLEG](https://huggingface.co/datasets/jhu-clsp/jfleg):
-
-```bash
-python trainer/trainer.py
-```
-
-The model will be saved to `trainer/t5-trained/`.
-
----
-
 ## 📝 Notes
 
 * No GPU required for inference, but recommended for fine-tuning.

@@ -7,3 +7,9 @@ sentencepiece
 accelerate
 numpy==1.26.4
 transformers==4.41.0
+diff-match-patch
+nltk
+ollama
+structlog
+PyJWT>=2.0.0
+python-dotenv>=1.0.0

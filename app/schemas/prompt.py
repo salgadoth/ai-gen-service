@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Union
 
 class Prompt(BaseModel):
     text: str
@@ -25,6 +25,18 @@ class GrammarAnalysisResponse(BaseModel):
     paragraphDiffs: List[Change] # List of changes in the paragraph
     sentences: List[SentenceAnalysis] # Detailed sentence by sentence analysis
 
+class Insight(BaseModel):
+    id: int # The id of the insight
+    category: str # The category of the insight
+    suggestion: str # The suggestion of the insight
+    description: str # The description of the insight
+    references: Optional[List[str]] = None # The references of the insight
+
 class InsightsResponse(BaseModel):
-    original: str # The original text for which insights were generated
-    insights: str # The generated insights string
+    insights: List[Insight] # The generated insights
+
+class ErrorResponse(BaseModel):
+    error: str # The error message
+    raw: Optional[str] = None # The raw response from the model
+
+OllamaGeneralResult = Union[InsightsResponse, ErrorResponse]

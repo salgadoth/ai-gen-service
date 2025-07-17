@@ -1,14 +1,15 @@
+import logging
 import os
 from fastapi import HTTPException, Request, status
 import jwt  # PyJWT
 from utils.logger import get_logger
-from dotenv import load_dotenv  # Add this import
+from dotenv import load_dotenv, dotenv_values
 
 # Load environment variables from .env file in the root directory
 load_dotenv()
 
-# JWT secret (set JWT_SECRET in your .env file at the project root)
-jwt_secret = os.getenv("JWT_SECRET", "your_jwt_secret")
+# Jwt secret from .env file
+jwt_secret = dotenv_values().get("JWT_SECRET")
 # Set to True to enable role checking
 enable_role_check = False
 required_role = "admin"  # Example role
@@ -19,10 +20,19 @@ logger = get_logger("jwt")
 
 def verify_jwt(request: Request):
     auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
+    if not auth_header or not auth_header.lower().startswith("bearer "):
         logger.warning("Missing or invalid Authorization header", path=str(request.url))
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid Authorization header")
-    token = auth_header.split(" ", 1)[1]
+    
+    logger.info(f'''Starting JWT verification \n
+                 Auth Header: {auth_header} \n
+                 Request URL: {request.url} \n
+                 JWT Secret: {jwt_secret} \n
+                 Enable Role Check: {enable_role_check} \n
+                 Required Role: {required_role} \n''')
+
+    token = auth_header[7:].strip()  # Remove 'Bearer ' prefix robustly
+    logger.info("User Token", token=token)
     try:
         payload = jwt.decode(token, jwt_secret, algorithms=["HS256"])  # Adjust algorithm as needed
     except jwt.ExpiredSignatureError:
@@ -38,4 +48,4 @@ def verify_jwt(request: Request):
             logger.warning("Role check failed", user_role=user_role, required_role=required_role, path=str(request.url))
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
     logger.info("JWT validated successfully", subject=payload.get("sub"), role=payload.get("role"), path=str(request.url))
-    return payload 
+    return payload

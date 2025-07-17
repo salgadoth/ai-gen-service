@@ -1,4 +1,5 @@
 import os
+from models.insights_generator import InsightsGenerator
 from fastapi import APIRouter, HTTPException, Depends, status
 from models.grammar_corrector import GrammarCorrector
 from schemas.prompt import Prompt, GrammarAnalysisResponse, InsightsResponse
@@ -13,10 +14,11 @@ from utils.jwt import verify_jwt
 logger = get_logger("inference")
 
 router = APIRouter()
-model = GrammarCorrector()
+grammar_corrector = GrammarCorrector()
+insights_generator = InsightsGenerator()
 
 @router.post("/grammar", response_model=GrammarAnalysisResponse)
-async def grammar_only(prompt: Prompt, user_claims: dict = Depends(verify_jwt)):
+async def grammar(prompt: Prompt, user_claims: dict = Depends(verify_jwt)):
     """Grammar correction only endpoint"""
     start_time = time.time()
     
@@ -25,7 +27,7 @@ async def grammar_only(prompt: Prompt, user_claims: dict = Depends(verify_jwt)):
                include_explanations=prompt.include_explanations)
     
     try:
-        result = model.analyse(
+        result = grammar_corrector.analyse(
             original=prompt.text,
             include_explanations=prompt.include_explanations or False
         )
@@ -44,7 +46,7 @@ async def grammar_only(prompt: Prompt, user_claims: dict = Depends(verify_jwt)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/insights", response_model=InsightsResponse)
-async def insights_only(prompt: Prompt, user_claims: dict = Depends(verify_jwt)):
+async def insights(prompt: Prompt, user_claims: dict = Depends(verify_jwt)):
     """Content insights only endpoint - uses original text as base rate"""
     start_time = time.time()
     
@@ -53,16 +55,11 @@ async def insights_only(prompt: Prompt, user_claims: dict = Depends(verify_jwt))
                has_full_context=prompt.full_context is not None)
     
     try:
-        insights = model.ollama.generate_content_insights(
-            text=prompt.text,
-            full_context=prompt.full_context
-        )
-        
+        insights = insights_generator.generate(prompt.text, prompt.full_context)
         process_time = time.time() - start_time
         logger.info("Content insights completed successfully",
                    process_time=round(process_time, 3),
                    insights_length=len(insights))
-        
         return InsightsResponse(
             insights=insights,
             original=prompt.text
@@ -78,7 +75,7 @@ async def insights_only(prompt: Prompt, user_claims: dict = Depends(verify_jwt))
         logger.error("Content insights failed",
                     error=str(e),
                     process_time=round(process_time, 3))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to generate insights: {e}")
 
 @router.post("/check-base-rate")
 async def check_base_rate(prompt: Prompt, user_claims: dict = Depends(verify_jwt)):

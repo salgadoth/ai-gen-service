@@ -4,9 +4,7 @@ from utils.split import split_into_sentences
 from utils.logger import get_logger
 import ollama
 import time
-
-# Initialize logger
-logger = get_logger("ollama_service")
+import re
 
 class InsufficientContentError(Exception):
     """Raised when content doesn't meet minimum requirements for insights analysis"""
@@ -21,8 +19,9 @@ class OllamaService:
         self.model_name = model_name
         self.min_sentences = min_sentences
         self.min_words = min_words
+        self.logger = get_logger("ollama_service")
         
-        logger.info("OllamaService initialized", 
+        self.logger.info("OllamaService initialized", 
                    model_name=model_name,
                    min_sentences=min_sentences,
                    min_words=min_words)
@@ -34,7 +33,7 @@ class OllamaService:
         
         meets_threshold = len(sentences) >= self.min_sentences and word_count >= self.min_words
         
-        logger.debug("Content threshold check",
+        self.logger.debug("Content threshold check",
                     text_length=len(text),
                     sentence_count=len(sentences),
                     word_count=word_count,
@@ -42,43 +41,63 @@ class OllamaService:
         
         return meets_threshold
         
-    def generate(self, prompt: str, system: Optional[str] = None) -> str:
+    def generate(self, prompt: str, system: Optional[str] = None, options: Optional[Dict[str, Any]] = None) -> dict:
         """Generate text using Ollama Python package (using generate, not chat)"""
         start_time = time.time()
         
         try:
-            logger.debug("Starting Ollama generation (generate)",
+            self.logger.debug("Starting Ollama generation (generate)",
                         model_name=self.model_name,
                         prompt_length=len(prompt),
-                        has_system=system is not None)
+                        has_system=system is not None,
+                        has_options=options is not None)
+            
+            # Prepare the generate call parameters
+            generate_params = {
+                "model": self.model_name,
+                "prompt": prompt,
+                "stream": False
+            }
+            
+            # Add options if provided
+            if options:
+                generate_params["options"] = options
             
             # Use ollama.generate instead of ollama.chat
-            response = ollama.generate(
-                model=self.model_name,
-                prompt=prompt,
-                stream=False
-            )
+            response = ollama.generate(**generate_params)
             
             generation_time = time.time() - start_time
             response_text = response["response"] if "response" in response else ""
             response_length = len(response_text)
             
-            logger.info("Ollama generation completed",
+            self.logger.info("Ollama generation completed",
                        model_name=self.model_name,
                        generation_time=round(generation_time, 3),
                        response_length=response_length)
             
-            return response_text
-            
+            response_text = response_text.replace("\n", "")
+            json_match = re.search(r'(\{.*\}|\[.*\])', response_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                try:
+                    parsed = json.loads(json_str)
+                    return parsed
+                except json.JSONDecodeError as e:
+                    self.logger.error("Failed to parse Ollama response as JSON", error=str(e), raw_response=json_str)
+                    return {"error": "Invalid JSON format", "raw": response_text}
+            else:
+                self.logger.error("No JSON found in Ollama response", raw_response=response_text)
+                return {"error": "No JSON found in response", "raw": response_text}
+
         except Exception as e:
             generation_time = time.time() - start_time
-            logger.error("Ollama generation failed",
+            self.logger.error("Ollama generation failed",
                         model_name=self.model_name,
                         error=str(e),
                         generation_time=round(generation_time, 3))
-            return ""
+            return {"error": "Ollama generation failed", "raw": str(e)}
     
-    def generate_batch_explanations(self, corrections_batch: List[str]) -> str:
+    def generate_batch_explanations(self, corrections_batch: List[str]):
         """Generate explanations for multiple corrections in one call using the provided system prompt."""
         if not corrections_batch:
             return "No corrections to explain."
@@ -119,7 +138,7 @@ class OllamaService:
         
         return self.generate(prompt)
 
-    def generate_correction_explanation(self, original: str, corrected: str, changes: List[dict]) -> str:
+    def generate_correction_explanation(self, original: str, corrected: str, changes: List[dict]):
         """Generate explanation for a single grammar correction using the provided system prompt."""
         if not changes:
             return "No corrections needed. Your text looks good!"
@@ -156,19 +175,19 @@ class OllamaService:
             '''
         return self.generate(prompt)
     
-    def generate_content_insights(self, text: str, full_context: Optional[str] = None) -> str:
+    def generate_content_insights(self, text: str, full_context: Optional[str] = None):
         """Generate research insights, thought starters, and content references"""
         # Use full context if available, otherwise use the provided text
         context_to_analyze = full_context if full_context else text
 
-        logger.info("Generating content insights",
+        self.logger.info("Generating content insights",
                    text_length=len(text),
                    context_length=len(context_to_analyze),
                    has_full_context=full_context is not None)
         
         # Check if we have enough content for meaningful insights
         if not self._meets_threshold(context_to_analyze):
-            logger.warning("Insufficient content for insights analysis",
+            self.logger.warning("Insufficient content for insights analysis",
                           text_length=len(context_to_analyze),
                           min_sentences=self.min_sentences,
                           min_words=self.min_words)
@@ -179,7 +198,7 @@ class OllamaService:
         You are a research assistant and content strategist. Analyze the following text and provide valuable insights, thought starters, and references to help expand and enhance the content.
 
         Your task:
-        - Generate at least 3 distinct, actionable suggestions or insights for the user.
+        - Generate 3 distinct, actionable suggestions or insights for the user.
         - Number each suggestion.
         - Be specific and practical.
 
@@ -213,12 +232,49 @@ class OllamaService:
         Focus on providing actionable, specific suggestions that will help the writer expand their content with credible, relevant information.
         Keep suggestions practical and directly related to the content's themes and goals.
 
-        Output format:
-        {
-            "insight": "Your insight here"
-            "references":['link 1 or title 1', 'link 2 or title 2', 'link 3 or title 3']
-            "delta": 'Float, from 0 to 1, how confident are you on the analysis.'
-        }
+        CRITICAL OUTPUT REQUIREMENTS:
+        - You MUST respond with ONLY valid JSON that can be parsed by Python's json.loads()
+        - Start with {{ and end with }}
+        - Use double quotes for all strings
+        - Use proper JSON syntax (commas, brackets, etc.)
+        - No trailing commas
+        - No comments or explanations outside the JSON
+        - No markdown formatting
+        - No need to break lines
+
+        Required JSON structure:
+        [
+            {{
+                "id": 1,
+                "category": "Thought Starters & Ideas",
+                "suggestion": "Your specific suggestion here",
+                "description": "Brief explanation of why this is valuable"
+                "references": ["link 1 or title 1", "link 2 or title 2", "link 3 or title 3"]
+            }},
+            {{
+                "id": 2,
+                "category": "Research References & Sources",
+                "suggestion": "Your specific suggestion here",
+                "description": "Brief explanation of why this is valuable"
+                "references": ["link 1 or title 1", "link 2 or title 2", "link 3 or title 3"]
+            }},
+            {{
+                "id": 3,
+                "category": "Data & Statistics",
+                "suggestion": "Your specific suggestion here",
+                "description": "Brief explanation of why this is valuable"
+                "references": ["link 1 or title 1", "link 2 or title 2", "link 3 or title 3"]
+            }},
+            {{
+                "id": 4,
+                "category": "Content Expansion Opportunities",
+                "suggestion": "Your specific suggestion here",
+                "description": "Brief explanation of why this is valuable"
+                "references": ["link 1 or title 1", "link 2 or title 2", "link 3 or title 3"]
+            }},
+        ]
+
+        DO NOT include any text before or after the JSON. Only return the JSON object.
         <|end|>
 
         <|user|>
@@ -228,9 +284,9 @@ class OllamaService:
 
         <|assistant|>
         '''
-        return self.generate(prompt)
+        return self.generate(prompt, options={"temperature": 0.1, "top_p": 0.9})
     
-    def generate_combined_analysis(self, text: str, full_context: Optional[str] = None) -> Dict[str, str]:
+    def generate_combined_analysis(self, text: str, full_context: Optional[str] = None):
         """Generate both grammar explanations and content insights"""
         return {
             "insights": self.generate_content_insights(text, full_context)

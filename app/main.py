@@ -1,10 +1,10 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from routes.inference import router
-import nltk
-from utils.logger import get_logger
+from context.lifespan_manager import lifespan
 import time
 import uuid
+from utils.logger import get_logger
 
 # Initialize logger
 logger = get_logger("main")
@@ -12,7 +12,8 @@ logger = get_logger("main")
 app = FastAPI(
     title="AI Generation API",
     description="A FastAPI-based microservice for grammar correction and content insights",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -26,25 +27,6 @@ app.add_middleware(
 
 # Include routers
 app.include_router(router, prefix="/api/v1")
-
-# Download NLTK data
-try:
-    nltk.download('punkt')
-    logger.info("NLTK punkt tokenizer downloaded successfully")
-except Exception as e:
-    logger.error("Failed to download NLTK punkt", error=str(e))
-
-@app.on_event("startup")
-async def startup_event():
-    """Application startup event"""
-    logger.info("Starting AI Generation API", 
-               service="ai-gen-api", 
-               version="1.0.0")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Application shutdown event"""
-    logger.info("Shutting down AI Generation API")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

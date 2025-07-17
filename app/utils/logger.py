@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-def setup_structlog(log_level: str = "INFO", log_file: Optional[str] = None):
+def setup_structlog(log_level: str = "DEBUG", log_file: Optional[str] = None):
     # Create a custom formatter for JSON file output
     class JSONFormatter(logging.Formatter):
         def format(self, record):
@@ -85,7 +85,7 @@ def init_logging():
     logs_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d")
     log_file = logs_dir / f"app_{timestamp}.log"
-    setup_structlog(log_level="INFO", log_file=str(log_file))
+    setup_structlog(log_level="DEBUG", log_file=str(log_file))
 
 init_logging()
 
